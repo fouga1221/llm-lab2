@@ -20,6 +20,31 @@ Notebook 概要:
 
 ローカル GPU で使う場合: Notebook をダウンロードし `pip install -r requirements.txt` 後 `jupyter lab` / VS Code で開いて同様に実行してください。
 
+### 推論専用 Notebook エントリーポイント
+学習済み (もしくは HF Hub 公開) モデル + LoRA アダプタを用いて高速にベンチ付き対話推論を行う `notebooks/inference.ipynb` も利用できます。
+
+[![Open In Colab - Inference](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/fouga1221/llm-lab2/blob/main/notebooks/inference.ipynb)
+
+特徴:
+- ローカルパス / HF モデルID 自動判定 (ローカル無ければ Hub 参照)
+- LoRA / マージ済みモデルの両モード対応 (`LOAD_MODE = 'base+lora' | 'merged'`)
+- L4 GPU 向け 4bit 省メモリ推奨プリセット (TTFT ストリーミング計測)
+- 連続対話ループ: 各ターンの `ttft_ms, gen_ms, total_ms, tokens_per_s, prompt_tokens, new_tokens, mem_*` を `bench.csv` に追記
+- セッション終了後 `session_summary.json` / `conversation.json` / `params_{config_hash}.json` を保存
+
+利用手順 (Colab):
+1. バッジで開き「ドライブにコピー」
+2. 先頭の GPU 検出セルを実行し推奨設定を確認 (L4 以外の場合は PRECISION_MODE を適宜調整)
+3. パラメータブロックで `LOAD_MODE` / モデル参照 (`*_PATH` or `*_REF`) / 生成長 (`GEN_KW.max_new_tokens`) を編集
+4. YAML プロンプトを使う場合は `PROMPT_SOURCE='yaml'` とし `PROMPT_YAML_PATH` を配置
+5. 連続対話セル (#9) を実行して `/exit` で終了
+6. 終了後 #10 サマリセルを実行しメトリクス確認
+
+小ネタ / TIPS:
+- 4bit で品質懸念がある場合: `PRECISION_MODE='auto'` + マージ済み bf16 モデルを参照
+- 長対話で VRAM が増える場合: `TRUNCATE_PROMPT_TOKENS` を 3072 などに下げる
+- TTFT 改善をさらに可視化したい場合: 対話ループを短いプロンプト (例: "ping") で複数回繰り返し p95 を確認
+
 ---
 
 ## セットアップ (推奨パッケージ)
