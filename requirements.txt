@@ -7,17 +7,16 @@ trl>=0.23.0,<0.24.0  # 推奨 0.23.x
 bitsandbytes>=0.48.0,<0.49.0  # 推奨 0.48.x
 
 # Quantization
-llmcompressor  # AWQModifier (W4A16) 用
-autoawq  # フォールバック用
+llmcompressor>=0.8.1  # AWQModifier (W4A16) 用
 
 # Serving
 vllm  # 最新安定版 (AWQ 対応)
 
 # Utilities
 pyyaml  # YAML config 読込
+accelerate>=1.6.0,<1.11.0  # llm-compressor の依存バージョン帯に合わせる
+datasets  # キャリブレーションデータ整形
 
 # Optional / Future (コメントアウト: 後で導入判定)
-# accelerate
-# datasets
 # sentencepiece  # 一部 tokenizer で必要
 

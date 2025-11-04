@@ -1,73 +1,63 @@
-# vLLM Qwen3-14B LoRA / AWQ Notebook 使い方メモ
+# vLLM Qwen3-14B ノートブックガイド
 
-`notebooks/vllm_qwen3_lora.ipynb` は、LoRA 適用済み Qwen3-14B を
+本リポジトリの Colab 向けノートブックは、役割ごとに以下の 3 つへ分割しました。  
+それぞれのノートブックは Google Drive との連携・依存パッケージの導入・設定値の永続化ロジックを共通化しており、ランタイム再起動後も設定セルを再実行するだけで作業を再開できます。
 
-1. CPU 上で LoRA をマージ  
-2. AWQ で量子化  
-3. vLLM で推論
-
-まで一気通貫で行うことを想定したノートブックです。  
-以下では Colab 環境（A100 → L4 切り替え）の利用例を中心に、
-主要セルの設定とワークフローをまとめます。
-
----
-
-## 事前準備
-
-* Google Drive を `/content/drive` にマウント（標準機能）。  
-* `DATA_ROOT` 直下に成果物が書き込まれるため、十分な空き容量を確保する。  
-* base モデル / LoRA アダプタ / AWQ 成果物は Drive 上で共有しておくと復旧が容易。  
-* ノートブックは Colab から以下のリンクで開けます：  
-  [Open in Colab](https://colab.research.google.com/github/fouga1221/llm-lab2/blob/main/notebooks/vllm_qwen3_lora.ipynb)
+| ノートブック | 主な機能 | 備考 |
+|--------------|----------|------|
+| `finetuning_lora_qlora.ipynb` | LoRA / QLoRA によるファインチューニング | ベースモデル・データセット・学習ハイパーパラメータを設定し、LoRA アダプタを保存。任意でマージも可能。 |
+| `quantization_awq_lora.ipynb` | LoRA マージ + llmcompressor AWQ 量子化 | LoRA マージセルと AWQ 量子化セルを分離。LoRA なしでの量子化もこのノートブックで実施。 |
+| `inference_chat_vllm.ipynb` | vLLM 推論・ベンチマーク・チャットループ | 量子化結果またはベースモデルを読み込み、ベンチマークとチャットログ収集を実行。LoRA 切り替え機能付き。 |
 
 ---
 
-## セル構成と主要設定
+## 共通の準備フロー
 
-### セル1: 環境構築
-- `REPO_DIR` … clone 先を変更したい場合のみ編集。  
-- `REPO_BRANCH` … 特定ブランチを使うなら変更。  
-- `BASE_PACKAGES` … 必要パッケージ。Colab GPU であればそのままで OK。
-
-### セル2: 定数設定
-- `CONFIG["BASE_MODEL_NAME"]` … LoRA のベースモデル ID。  
-- `CONFIG["LORA_DIR"]` … LoRA アダプタの配置先。  
-- `CONFIG["MERGED_OUTPUT_DIR"]` / `CONFIG["AWQ_OUTPUT_DIR"]` … デフォルトの出力先。  
-- `CONFIG["EXTERNAL_MERGED_DIR"]` / `CONFIG["EXTERNAL_AWQ_DIR"]` … すでに成果物がある場合に指定するパス。  
-- `CONFIG["PERFORM_LORA_MERGE"]` / `CONFIG["PERFORM_AWQ_QUANT"]`  
-  - `True` … セル3でマージ／量子化を実行する。  
-  - `False` … セル3は既存成果物（`EXTERNAL_*` または既定ディレクトリ）を再利用する。
-
-### セル3: LoRA マージ & AWQ 量子化
-- A100 など潤沢な GPU で実行 → 成果物を Drive に保存 → 切り替え先で再利用。  
-- `PERFORM_*` が `False` の場合は `EXTERNAL_*` または既定ディレクトリから成果物を検出し、`VLLM_MODEL_PATH` と `VLLM_QUANTIZATION` を自動設定。
-
-### セル5 以降
-- セル5: vLLM ロード（`cfg["model_name"]` はセル3で決定済み）  
-- セル6: バッチ推論とメトリクス集計  
-- セル7: 対話ループ（`/exit` で終了）  
-- セル8: 後片付け（`free_model`）
+1. **セル1: Colab ユーティリティ**  
+   - リポジトリの clone と `pip` ラッパ関数を定義し、必要なパッケージをインストールします。  
+   - ランタイム再起動が必要になった場合はセル1とセル2を再実行してください。
+2. **セル2: 設定と永続化**  
+   - Google Drive をマウントし、`/content/llm-lab-save` へのシンボリックリンクを作成。  
+   - 各種パス・ハイパーパラメータを JSON で保存し、再起動後も自動復元します。  
+   - 設定を変更したら `persist_config(CONFIG)` を呼び出して保存します。
 
 ---
 
-## 推奨ワークフロー
+## ノートブック別サマリ
 
-### 1. A100 など大きめ GPU で準備
-1. セル1～2を実行。  
-2. `CONFIG["PERFORM_LORA_MERGE"] = True`、`CONFIG["PERFORM_AWQ_QUANT"] = True` のままセル3を実行。  
-3. 生成された `MERGED_OUTPUT_DIR` / `AWQ_OUTPUT_DIR` を Drive 等に保存。  
-4. セル4以降は任意（動作確認したければ実行）。
+### 1. `finetuning_lora_qlora.ipynb`
+- **セル3**: データセットの読み込みと整形。`DATASET_FORMAT` で JSONL / Hugging Face Dataset に対応。  
+- **セル4**: LoRA / QLoRA ファインチューニング。`USE_QLORA` の切り替えや `TRAINING_ARGS` の調整が可能。  
+- **セル5**: 任意で LoRA アダプタをベースモデルへマージ（CPU デフォルト）。  
+- **セル6**: GPU メモリを開放する後片付け。
 
-### 2. L4 / T4 等で推論のみ行う
-1. 同じノートブックを開きセル1～2を実行。  
-2. `CONFIG["PERFORM_LORA_MERGE"] = False`、`CONFIG["PERFORM_AWQ_QUANT"] = False` に設定。  
-3. `CONFIG["EXTERNAL_AWQ_DIR"]`（必要なら `EXTERNAL_MERGED_DIR`）に A100 で作成した成果物パスを指定。  
-4. セル3を実行すると既存成果物が検出される。以降セル5～8で推論と対話を実行。
+### 2. `quantization_awq_lora.ipynb`
+- **セル3**: LoRA マージ処理。`ENABLE_LORA_MERGE=False` でスキップし、既存マージ済みモデルを再利用できます。  
+- **セル4**: llmcompressor を用いた AWQ 量子化。キャリブレーションサンプルはリスト、ファイル、または Dataset ID で指定可能。  
+- 量子化後は `AWQ_OUTPUT_DIR` に safetensors と `awq_config.json` を自動配置します。
+
+### 3. `inference_chat_vllm.ipynb`
+- **セル3**: vLLM モデルをロード。`reload_bundle()` で設定値に応じて再読み込みし、LoRA 適用の有無を永続化します。  
+- **セル4**: `profile_generation` によるベンチマーク。生成結果とメトリクスをファイルへ保存。  
+- **セル5**: `switch_lora()` ヘルパーで LoRA / 量子化設定を切り替え可能。  
+- **セル6**: チャットループ。会話ログは JSONL 形式で `CHAT_LOG_PATH` に追記されます。  
+- **セル7**: vLLM リソースの解放。
 
 ---
 
-## メモ
-- 14B モデルの LoRA マージは一時的に 30GB 近い RAM を消費するため、A100 クラスの環境推奨。Colab 標準（L4/T4）では途中でプロセスが落ちるケースが多い。  
-- AWQ 量子化も CPU で実行可能だが時間を要する。GPU があれば `device_map={\"\": \"cuda\"}` に変更すると高速化可。  
-- 生成された成果物は Drive にバックアップしておくと環境切り替えが容易。  
-- 既存成果物を使う際は `EXTERNAL_*` でパスを指定し、`PERFORM_*` を `False` にするだけでよい。
+## 推奨ワークフロー例
+
+1. **高性能 GPU (A100 等)** で `finetuning_lora_qlora.ipynb` を実行し、LoRA アダプタを作成。  
+2. 同環境、もしくは十分な VRAM を持つ環境で `quantization_awq_lora.ipynb` を実行し、マージ済みモデルを AWQ 量子化。  
+3. 推論専用環境（L4 / T4 等）に切り替えて `inference_chat_vllm.ipynb` を実行。  
+   - `MODEL_PATH` に AWQ 出力フォルダを指定してベンチマーク・チャットを実施。  
+   - LoRA を切り替えたい場合は `switch_lora()` を使用。
+
+---
+
+## 注意事項
+
+- ノートブックのセルは依存順になっています。指定と異なる順序で実行しないでください。  
+- 量子化やベンチマーク処理は GPU メモリを多く消費します。必要に応じて `tensor_parallel_size` や `gpu_memory_utilization` を調整してください。  
+- 旧来の一体型ノートブック (`vllm_qwen3_lora_autoAWQ.ipynb` 等) はメンテナンス対象外です。新しい分割ノートブックへの移行を推奨します。
+
